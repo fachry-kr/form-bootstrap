@@ -1,0 +1,12 @@
+th, td {
+  white-space: nowrap;
+  padding: 4px;
+  vertical-align: middle;
+  font-size: 12px;
+}
+th {
+  position: sticky;
+  top: 0;
+  background-color: #f8f9fa;
+  z-index: 10;
+}
