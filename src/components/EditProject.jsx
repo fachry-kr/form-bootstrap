@@ -13,6 +13,7 @@ const EditProject = () => {
     log: {},
   });
 
+  // Biar bisa diedit
   useEffect(() => {
     const stored = JSON.parse(localStorage.getItem("projects")) || [];
     setProjects(stored);
@@ -51,6 +52,7 @@ const EditProject = () => {
     }
   };
 
+  // Tampilan form untuk edit atau buat project baru
   return (
     <div className="container mt-5">
       <h3>{id === "new" ? "Create Project" : "Edit Project"}</h3>

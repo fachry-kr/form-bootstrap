@@ -10,7 +10,8 @@ const UserForm = ({ user, onSave, onCancel }) => {
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
-
+  
+// apa yang diinputkan user
   const handleSubmit = (e) => {
     e.preventDefault();
     onSave(form);

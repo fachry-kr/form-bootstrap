@@ -3,46 +3,75 @@ import { Link } from "react-router-dom";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import api from "../services/api";
 
-const ProjectLogTable = () => {
-  const [projects, setProjects] = useState(() => {
-    const stored = localStorage.getItem("projects");
-    return stored ? JSON.parse(stored) : [];
-  });
-  const [selectedProjectIndex, setSelectedProjectIndex] = useState(null);
-  const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState("");
+// Tampilkan tabel log proyek dengan navigasi bulan
+const ProjectLogTableWithMonthNav = () => {
+  const [projects, setProjects]                 = useState([]);
+  const [searchPic, setSearchPic]               = useState("");
+  const [searchProject, setSearchProject]       = useState("");
+  const [searchRepo, setSearchRepo]             = useState("");
+  const [filteredProjects, setFilteredProjects] = useState([]);
+  const [monthOffset, setMonthOffset]           = useState(0);
+  const [isSearchClicked, setIsSearchClicked]   = useState(false);
+
+  const currentDate  = new Date();
+  const displayDate  = new Date(currentDate.getFullYear(), currentDate.getMonth() + monthOffset, 1);
+  const displayMonth = displayDate.getMonth();
+  const displayYear  = displayDate.getFullYear();
+  const monthName    = displayDate.toLocaleString("default", { month: "long" }).toUpperCase();
 
   useEffect(() => {
-    localStorage.setItem("projects", JSON.stringify(projects));
-  }, [projects]);
+    api.get("/users")
+      .then((res) => {
+        const mapped = res.data.map((user) => ({
+          pic   :  user.name,
+          nama  : user.email,
+          repo  : `https://jsonplaceholder.typicode.com/users/${user.id}`,
+          log   : {},
+        }));
+        setProjects(mapped);
+      })
+      .catch((err) => {
+        console.error("Gagal ambil data:", err);
+      });
+  }, []);
 
-  const generateDates = () => {
-    const start = new Date("2025-06-16");
-    const end = new Date("2025-07-15");
-    const dates = [];
-    while (start <= end) {
-      const yyyy = start.getFullYear();
-      const mm = String(start.getMonth() + 1).padStart(2, "0");
-      const dd = String(start.getDate()).padStart(2, "0");
-      dates.push(`${yyyy}-${mm}-${dd}`);
-      start.setDate(start.getDate() + 1);
+  const generateDates = (year, month) => {
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const dates       = [];
+    for (let day      = 1; day <= daysInMonth; day++) {
+      const dd        = String(day).padStart(2, "0");
+      const mm        = String(month + 1).padStart(2, "0");
+      dates.push({ full: `${year}-${mm}-${dd}`, day: dd });
     }
     return dates;
   };
 
-  const dates = generateDates();
+  const dates = generateDates(displayYear, displayMonth);
 
-  const handleCheckboxChange = (projectIndex, date) => {
-    const updated = [...projects];
-    const currentLog = updated[projectIndex].log || {};
-    currentLog[date] = !currentLog[date];
+  // Biar bisa di Ceklis
+  const handleCheckboxChange  = (projectIndex, dateKey) => {
+    const updated             = [...filteredProjects];
+    const currentLog          = updated[projectIndex].log || {};
+    currentLog[dateKey]       = !currentLog[dateKey];
     updated[projectIndex].log = currentLog;
-    setProjects(updated);
+    setFilteredProjects(updated);
+  };
+// Mencari berdasarkan inputannya
+  const handleSearch      = () => {
+    const result          = projects.filter((proj) => {
+      const matchPic      = proj.pic?.toLowerCase().includes(searchPic.toLowerCase());
+      const matchProject  = proj.nama?.toLowerCase().includes(searchProject.toLowerCase());
+      const matchRepo     = proj.repo?.toLowerCase().includes(searchRepo.toLowerCase());
+      return matchPic && matchProject && matchRepo;
+    });
+    setFilteredProjects(result);
+    setIsSearchClicked(true);
   };
 
   const exportToExcel = () => {
-    const rows = filteredProjects.map((proj, i) => {
+    const rows  = filteredProjects.map((proj, i) => {
       const row = {
         No: i + 1,
         "Nama PIC": proj.pic || "",
@@ -50,22 +79,12 @@ const ProjectLogTable = () => {
         "Link Repo": proj.repo,
       };
       dates.forEach((date) => {
-        row[date] = proj.log?.[date] ? "✓" : "";
+        row[date.full] = proj.log?.[date.full] ? "✓" : "";
       });
       return row;
     });
+
     const ws = XLSX.utils.json_to_sheet(rows);
-    const range = XLSX.utils.decode_range(ws["!ref"]);
-    for (let R = 1; R <= range.e.r; ++R) {
-      for (let C = 4; C <= range.e.c; ++C) {
-        const cell_address = XLSX.utils.encode_cell({ r: R, c: C });
-        if (!ws[cell_address]) continue;
-        ws[cell_address].s = {
-          alignment: { horizontal: "center" },
-          font: { color: { rgb: "000000" } },
-        };
-      }
-    }
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Log Projects");
     XLSX.writeFile(wb, "StyledLogProjects.xlsx");
@@ -73,14 +92,15 @@ const ProjectLogTable = () => {
 
   const exportToPDF = () => {
     const doc = new jsPDF({ orientation: "landscape" });
-    const head = [["No", "PIC", "Nama Project", "Link Repo", ...dates.map((d) => d.slice(8))]];
+    const head = [["No", "PIC", "Nama Project", "Link Repo", ...dates.map((d) => d.day)]];
     const body = filteredProjects.map((proj, i) => [
       i + 1,
       proj.pic || "",
       proj.nama,
       proj.repo,
-      ...dates.map((date) => (proj.log?.[date] ? "X" : "")),
+      ...dates.map((date) => (proj.log?.[date.full] ? "✓" : "")),
     ]);
+
     autoTable(doc, {
       head,
       body,
@@ -88,144 +108,131 @@ const ProjectLogTable = () => {
       styles: { fontSize: 6 },
       headStyles: { fillColor: [240, 240, 240] },
     });
+
     doc.save("LogProjects.pdf");
   };
 
-  const saveToBackend = async () => {
-    try {
-      const response = await fetch("https://your-api-url.com/save-log", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(projects),
-      });
-      if (response.ok) {
-        alert("Data berhasil dikirim ke backend!");
-      } else {
-        alert("Gagal menyimpan ke backend.");
-      }
-    } catch (error) {
-      alert("Terjadi error saat menyimpan ke backend.");
-      console.error(error);
-    }
-  };
-
-  const filteredProjects = projects.filter((proj) => {
-    const matchSearch =
-      proj.pic?.toLowerCase().includes(search.toLowerCase()) ||
-      proj.nama?.toLowerCase().includes(search.toLowerCase());
-    const matchFilter = filter === "" || proj.repo?.endsWith(filter);
-    return matchSearch && matchFilter;
-  });
-
   return (
-    <div className="container mt-5">
-      <div className="d-flex justify-content-between align-items-center flex-wrap mb-3">
-        <h4 className="mb-0">Log Project Git</h4>
+    <div className="container-fluid mt-4">
+      <div className="d-flex justify-content-between align-items-center mb-3">
+        <h4>Laporan Project</h4>
         <Link to="/edit/new" className="btn btn-outline-success">Create</Link>
       </div>
 
+      <div className="row g-2 mb-2">
+        <div className="col-md">
+          <input
+            type="text"
+            className="form-control"
+            placeholder="Cari Nama PIC"
+            value={searchPic}
+            onChange={(e) => setSearchPic(e.target.value)}
+          />
+        </div>
+        <div className="col-md">
+          <input
+            type="text"
+            className="form-control"
+            placeholder="Cari Nama Project"
+            value={searchProject}
+            onChange={(e) => setSearchProject(e.target.value)}
+          />
+        </div>
+        <div className="col-md">
+          <input
+            type="text"
+            className="form-control"
+            placeholder="Cari Link Repo"
+            value={searchRepo}
+            onChange={(e) => setSearchRepo(e.target.value)}
+          />
+        </div>
+        <div className="col-md-auto">
+          <button className="btn btn-primary w-100" onClick={handleSearch}>
+            Search
+          </button>
+        </div>
+      </div>
+
       <div className="d-flex gap-2 flex-wrap mb-3">
-        <input
-          type="text"
-          className="form-control"
-          placeholder="Cari Nama PIC atau Project"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <select
-          className="form-select w-auto"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-        >
-          <option value="">Semua</option>
-          <option value=".com">.com</option>
-          <option value=".org">.org</option>
-        </select>
         <button className="btn btn-success" onClick={exportToExcel}>Export Excel</button>
         <button className="btn btn-danger" onClick={exportToPDF}>Export PDF</button>
       </div>
-
-      <div className="table-responsive">
-        <table className="table table-bordered table-sm text-center align-middle">
-          <thead className="table-light sticky-top">
-            <tr>
-              <th>No</th>
-              <th>Nama PIC</th>
-              <th>Nama Project</th>
-              <th>Link Repo</th>
-              {dates.map((date) => {
-                const d = new Date(date);
-                return (
-                  <th key={date} style={{ minWidth: "40px", fontSize: "11px" }}>
-                    {d.getDate()}<br />{d.toLocaleString("default", { month: "short" }).toUpperCase()}
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-          <tbody>
-            {filteredProjects.map((project, idx) => (
-              <React.Fragment key={idx}>
-                <tr>
-                  <td>{idx + 1}</td>
-                  <td>
-                    <Link to={`/edit/${idx}`}>{project.pic || "-"}</Link>
-                  </td>
-                  <td>{project.nama}</td>
-                  <td>
-                    <a href={project.repo} target="_blank" rel="noopener noreferrer">Repo</a>{" "}
+      
+      {isSearchClicked && (
+        <div className="table-responsive" style={{ overflowX: "auto" }}>
+          <table className="table table-bordered table-sm text-center align-middle">
+            <thead className="table-light sticky-top">
+              <tr>
+                <th className="bg-white sticky-start" rowSpan="2">No</th>
+                <th className="bg-white sticky-start" rowSpan="2">Nama PIC</th>
+                <th className="bg-white sticky-start" rowSpan="2">Nama Project</th>
+                <th className="bg-white sticky-start" rowSpan="2">Link Repo</th>
+                <th colSpan={dates.length}>
+                  <div className="d-flex justify-content-center align-items-center gap-3">
                     <button
-                      className="btn btn-sm btn-link text-primary"
-                      onClick={() =>
-                        setSelectedProjectIndex(idx === selectedProjectIndex ? null : idx)
-                      }
+                      type="button"
+                      className="btn btn-sm btn-outline-secondary"
+                      onClick={() => setMonthOffset(monthOffset - 1)}
                     >
-                      🗓️
+                      ←
                     </button>
-                  </td>
-                  {dates.map((date) => (
-                    <td key={date}>{project.log?.[date] ? "X" : ""}</td>
-                  ))}
-                </tr>
-                {selectedProjectIndex === idx && (
-                  <tr>
-                    <td colSpan={4 + dates.length} className="bg-light">
-                      <div className="d-flex flex-wrap gap-2">
-                        {dates.map((date) => (
-                          <div key={date} className="form-check">
-                            <input
-                              type="checkbox"
-                              className="form-check-input"
-                              id={`checkbox-${idx}-${date}`}
-                              checked={project.log?.[date] || false}
-                              onChange={() => handleCheckboxChange(idx, date)}
-                            />
-                            <label
-                              className="form-check-label"
-                              htmlFor={`checkbox-${idx}-${date}`}
-                            >
-                              {date}
-                            </label>
-                          </div>
-                        ))}
-                      </div>
+                    <strong>{monthName} {displayYear}</strong>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-secondary"
+                      onClick={() => setMonthOffset(monthOffset + 1)}
+                    >
+                      →
+                    </button>
+                  </div>
+                </th>
+              </tr>
+              <tr>
+                {dates.map((date) => (
+                  <th key={date.full} style={{ minWidth: "30px", fontSize: "11px" }}>{date.day}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filteredProjects.length > 0 ? (
+                filteredProjects.map((project, idx) => (
+                  <tr key={idx}>
+                    <td className="bg-white sticky-start">{idx + 1}</td>
+                    <td className="bg-white sticky-start">
+                      <Link to={`/edit/${idx}`}>{project.pic}</Link>
                     </td>
+                    <td className="bg-white sticky-start">{project.nama}</td>
+                    <td className="bg-white sticky-start">
+                      <a href={project.repo} target="_blank" rel="noreferrer">
+                        {new URL(project.repo).hostname}
+                      </a>
+                    </td>
+                    {dates.map((date) => (
+                      <td key={date.full}>
+                        <input
+                          type="checkbox"
+                          className="form-check-input"
+                          checked={project.log?.[date.full] || false}
+                          onChange={() => handleCheckboxChange(idx, date.full)}
+                        />
+                      </td>
+                    ))}
                   </tr>
-                )}
-              </React.Fragment>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr>
-              <td colSpan={4 + dates.length} className="text-end">
-                Total Projects: {filteredProjects.length}
-              </td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={4 + dates.length} className="text-center text-muted">
+                    Data tidak ditemukan.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 };
 
-export default ProjectLogTable;
+export default ProjectLogTableWithMonthNav;

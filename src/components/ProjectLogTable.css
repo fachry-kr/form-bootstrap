@@ -10,3 +10,27 @@ th {
   background-color: #f8f9fa;
   z-index: 10;
 }
+
+.sticky-col {
+  position: sticky;
+  left: 0;
+  background: white;
+  z-index: 2;
+}
+
+.left-col {
+  left: 0;
+}
+
+.left-col-2 {
+  left: 50px;
+}
+
+.left-col-3 {
+  left: 200px;
+}
+
+.left-col-4 {
+  left: 400px;
+}
+

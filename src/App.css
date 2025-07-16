@@ -40,3 +40,20 @@
 .read-the-docs {
   color: #888;
 }
+
+.sticky-col {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+}
+.sticky-col:nth-child(2) { left: 50px; }
+.sticky-col:nth-child(3) { left: 200px; }
+.sticky-col:nth-child(4) { left: 350px; }
+
+.sticky-start {
+position: sticky;
+left: 0;
+z-index: 2;
+background-color: #fff;
+}
+
