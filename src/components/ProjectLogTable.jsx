@@ -200,7 +200,7 @@ const ProjectLogTableWithMonthNav = () => {
                   <tr key={idx}>
                     <td className="bg-white sticky-start">{idx + 1}</td>
                     <td className="bg-white sticky-start">
-                      <Link to={`/edit/${idx}`}>{project.pic}</Link>
+                      <Link to={`/edit/${idx+1}`}>{project.pic}</Link>
                     </td>
                     <td className="bg-white sticky-start">{project.nama}</td>
                     <td className="bg-white sticky-start">
